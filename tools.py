@@ -51,13 +51,16 @@ def open_bnfile(fname,sizearr=(12,15,64,128),prec='>f4'):
     
     return binin
     
-def loadgrid(fname='grid.glob.nc'):
+def loadgrid(fname='grid.glob.nc',basin_masks=True):
     """ loadgrid(fname,sizearr,prec) reads a netcdf grid file and returns it as a
         xarray, with a few additional items.
         
         fname is the file name,
     """     
-    grd=xr.open_dataset(fname).squeeze('T')
+    grd=xr.open_dataset(fname)
+    
+    if "T" in grd.coords:
+        grd=grd.squeeze('T')
     
     # Preserve these arrays
     grd['lonc']=grd.XC
@@ -83,34 +86,35 @@ def loadgrid(fname='grid.glob.nc'):
     grd['uvol']=(grd.HFacW*grd.rAw*grd.drF).where(grd.HFacW>=grd.HFacW.min())
     grd['vvol']=(grd.HFacS*grd.rAs*grd.drF).where(grd.HFacS>=grd.HFacS.min())
     
+    if basin_masks:
     # Get basin masks
-    atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').data,grd.latc.transpose('X','Y').data,grd.cmask.transpose('X','Y','Z').data)
-    grd['cmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-    grd['cmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-    grd['cmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-    grd['cmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-    grd['cmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-    grd['cmask_nh']       = grd.cmask.where(grd.coords['Y']>0)
-    grd['cmask_sh']       = grd.cmask.where(grd.coords['Y']<=0)
+        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').data,grd.latc.transpose('X','Y').data,grd.cmask.transpose('X','Y','Z').data)
+        grd['cmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+        grd['cmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+        grd['cmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+        grd['cmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+        grd['cmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+        grd['cmask_nh']       = grd.cmask.where(grd.coords['Y']>0)
+        grd['cmask_sh']       = grd.cmask.where(grd.coords['Y']<=0)
     
-    atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').data,grd.latu.transpose('Xp1','Y').data,grd.umask.transpose('Xp1','Y','Z').data)
-    grd['umask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-    grd['umask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-    grd['umask_indian']   = xr.DataArray(indian_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-    grd['umask_so']       = xr.DataArray(so_mask      , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-    grd['umask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-    grd['umask_nh']       = grd.umask.where(grd.coords['Y']>0)
-    grd['umask_sh']       = grd.umask.where(grd.coords['Y']<=0)
+        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').data,grd.latu.transpose('Xp1','Y').data,grd.umask.transpose('Xp1','Y','Z').data)
+        grd['umask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+        grd['umask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+        grd['umask_indian']   = xr.DataArray(indian_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+        grd['umask_so']       = xr.DataArray(so_mask      , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+        grd['umask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+        grd['umask_nh']       = grd.umask.where(grd.coords['Y']>0)
+        grd['umask_sh']       = grd.umask.where(grd.coords['Y']<=0)
      
-    atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').data,grd.latv.transpose('X','Yp1').data,grd.vmask.transpose('X','Yp1','Z').data)
-    grd['vmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-    grd['vmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-    grd['vmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-    grd['vmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-    grd['vmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-    grd['vmask_nh']       = grd.vmask.where(grd.coords['Yp1']>0)
-    grd['vmask_sh']       = grd.vmask.where(grd.coords['Yp1']<=0)
-
+        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').data,grd.latv.transpose('X','Yp1').data,grd.vmask.transpose('X','Yp1','Z').data)
+        grd['vmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+        grd['vmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+        grd['vmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+        grd['vmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+        grd['vmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+        grd['vmask_nh']       = grd.vmask.where(grd.coords['Yp1']>0)
+        grd['vmask_sh']       = grd.vmask.where(grd.coords['Yp1']<=0)
+    
     grd.close()
     
     # These variable conflict with future axis names
