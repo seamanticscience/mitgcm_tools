@@ -51,13 +51,13 @@ def open_bnfile(fname,sizearr=(12,15,64,128),prec='>f4'):
     
     return binin
     
-def loadgrid(fname='grid.glob.nc',basin_masks=True):
+def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
     """ loadgrid(fname,sizearr,prec) reads a netcdf grid file and returns it as a
         xarray, with a few additional items.
         
         fname is the file name,
     """     
-    grd=xr.open_dataset(fname)
+    grd=xr.open_dataset(fname,chunks=chunking)
     
     if "T" in grd.coords:
         grd=grd.squeeze('T')
