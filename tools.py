@@ -150,9 +150,10 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
         
         By default conform_axes recognises X, Y, Xp1, Yp1, Z, Zp1, Zu, and Zl axes, but 
           addtional axis names (like Zd000001 or Zmd000015 from pkg/diagnostics) can be supplied using
-          the "strange_ax" input arguement:
+          the "strange_ax" input arguement, which renames the axis and draws coordinate values from  
+          grid_xdset (xarray dataset of loaded "grid" files):
               
-              tave=mitgcm_tools.conform_axes(tave,strange_ax={'Xeg':'XX','Yeg':'YX'})
+       oceDiag=mitgcm_tools.conform_axes(oceDiag_xdset,strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_xdset)
     """
         
     default_ax={'X':'XC','Y':'YC','Xp1':'XG','Yp1':'YG','Z':'ZC','Zp1':'ZG','Zu':'ZR','Zl':'ZL'}
