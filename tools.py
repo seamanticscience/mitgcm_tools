@@ -9,7 +9,25 @@ import getpass as gp
 import numpy   as np
 import pandas  as pd
 import xarray  as xr
+import os
+import sys
 import xgcm
+
+def find_in_search_path(pathname, matchFunc=os.path.isfile):
+    """
+       Look through the python search path for pathname and return location if successful.
+       
+       matchFunc lets you set the function to use. Default is os.path.isfile, which is great if
+          you hit the file directly on the path, but gb.glob is a good choice if you have a vague
+          idea that your file is on the path but arent exactly sure where (dont forget to include 
+          a wildcard in pathname).
+    
+    """ 
+    for dirname in sys.path:
+        candidate = os.path.join(dirname, pathname)
+        if matchFunc(candidate):
+            return candidate
+    raise FileNotFoundError("Can't find file %s" % pathname)
 
 # %% REGRIDDING, AXES, AND FILE LOADING ROUTINES
 def open_ncfile(file_pattern,doconform_axes=True,chunking=None,strange_axes=dict(),grid=[]):
@@ -59,7 +77,7 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
     """     
     grd=xr.open_dataset(fname,chunks=chunking)
     
-    if "T" in grd.coords:
+    if "T" in grd.dims:
         grd=grd.squeeze('T')
     
     # Preserve these arrays
@@ -87,35 +105,56 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
     grd['vvol']=(grd.HFacS*grd.rAs*grd.drF).where(grd.HFacS>=grd.HFacS.min())
     
     if basin_masks:
-    # Get basin masks
-        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').data,grd.latc.transpose('X','Y').data,grd.cmask.transpose('X','Y','Z').data)
-        grd['cmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-        grd['cmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-        grd['cmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-        grd['cmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-        grd['cmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
-        grd['cmask_nh']       = grd.cmask.where(grd.coords['Y']>0)
-        grd['cmask_sh']       = grd.cmask.where(grd.coords['Y']<=0)
-    
-        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').data,grd.latu.transpose('Xp1','Y').data,grd.umask.transpose('Xp1','Y','Z').data)
-        grd['umask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-        grd['umask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-        grd['umask_indian']   = xr.DataArray(indian_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-        grd['umask_so']       = xr.DataArray(so_mask      , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-        grd['umask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
-        grd['umask_nh']       = grd.umask.where(grd.coords['Y']>0)
-        grd['umask_sh']       = grd.umask.where(grd.coords['Y']<=0)
-     
-        atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').data,grd.latv.transpose('X','Yp1').data,grd.vmask.transpose('X','Yp1','Z').data)
-        grd['vmask_atlantic'] = xr.DataArray(atlantic_mask, coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-        grd['vmask_pacific']  = xr.DataArray(pacific_mask , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-        grd['vmask_indian']   = xr.DataArray(indian_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-        grd['vmask_so']       = xr.DataArray(so_mask      , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-        grd['vmask_arctic']   = xr.DataArray(arctic_mask  , coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
-        grd['vmask_nh']       = grd.vmask.where(grd.coords['Yp1']>0)
-        grd['vmask_sh']       = grd.vmask.where(grd.coords['Yp1']<=0)
-    
-    grd.close()
+        # Get basin masks
+        try:
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').data,grd.latc.transpose('X','Y').data,grd.cmask.transpose('X','Y','Z').data)
+                
+            grd['cmask_atlantic'] = xr.DataArray(atlantic_mask,\
+                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+            grd['cmask_pacific']  = xr.DataArray(pacific_mask ,\
+                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+            grd['cmask_indian']   = xr.DataArray(indian_mask  ,\
+                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+            grd['cmask_so']       = xr.DataArray(so_mask      ,\
+                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+            grd['cmask_arctic']   = xr.DataArray(arctic_mask  ,\
+                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+            grd['cmask_nh']       = grd.cmask.where(grd.coords['Y']>0)
+            grd['cmask_sh']       = grd.cmask.where(grd.coords['Y']<=0)
+            
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').data,grd.latu.transpose('Xp1','Y').data,grd.umask.transpose('Xp1','Y','Z').data)
+            
+            grd['umask_atlantic'] = xr.DataArray(atlantic_mask,\
+                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+            grd['umask_pacific']  = xr.DataArray(pacific_mask ,\
+                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+            grd['umask_indian']   = xr.DataArray(indian_mask  ,\
+                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+            grd['umask_so']       = xr.DataArray(so_mask      ,\
+                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+            grd['umask_arctic']   = xr.DataArray(arctic_mask  ,\
+                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+            grd['umask_nh']       = grd.umask.where(grd.coords['Y']>0)
+            grd['umask_sh']       = grd.umask.where(grd.coords['Y']<=0)
+             
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').data,grd.latv.transpose('X','Yp1').data,grd.vmask.transpose('X','Yp1','Z').data)
+            
+            grd['vmask_atlantic'] = xr.DataArray(atlantic_mask,\
+                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+            grd['vmask_pacific']  = xr.DataArray(pacific_mask ,\
+                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+            grd['vmask_indian']   = xr.DataArray(indian_mask  ,\
+                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+            grd['vmask_so']       = xr.DataArray(so_mask      ,\
+                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+            grd['vmask_arctic']   = xr.DataArray(arctic_mask  ,\
+                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+            grd['vmask_nh']       = grd.vmask.where(grd.coords['Yp1']>0)
+            grd['vmask_sh']       = grd.vmask.where(grd.coords['Yp1']<=0)
+        except (FileNotFoundError,IOError,OSError,TypeError):
+            print("Trouble with basin masking using oceanmasks")
+        finally:    
+            grd.close()
     
     # These variable conflict with future axis names
     grd=grd.drop(['XC','YC','XG','YG'])
@@ -234,31 +273,55 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
 
     return dsin
 
-def oceanmasks(xc,yc,maskin):    
+def oceanmasks(xc,yc,modelmask,woamask_file=''): 
     from scipy.interpolate import griddata
+    from urllib.error      import HTTPError
 
     nzdim=0
     # Find if input dimensions are 3d or 2d
-    if np.ndim(maskin)>2:
-        nzdim=np.size(maskin,2)
+    if np.ndim(modelmask)>2:
+        nzdim=np.size(modelmask,2)
         if np.ndim(xc)>2:
             xc=xc[:,:,0]
         if np.ndim(yc)>2:
             yc=yc[:,:,0]
-    
-    try: # Try to read from url
-        url = "https://data.nodc.noaa.gov/woa/WOA13/MASKS/basinmask_01.msk"
-        c = pd.read_csv(url,header=1)
-        
-        x = c.Longitude.values
-        y = c.Latitude .values
-        basinfile = c.Basin_0m.values
-    except "HTTPError": # Fall back on the file downloaded
-        mask_file='/Users/'+gp.getuser()+'/Dropbox_Work/Applications/MATLAB/mitgcm_toolbox/woa13_basinmask_01.msk'
 
-        x = np.loadtxt(mask_file,delimiter=',',usecols=(1,),skiprows=2)
-        y = np.loadtxt(mask_file,delimiter=',',usecols=(0,),skiprows=2)
-        basinfile = np.loadtxt(mask_file,delimiter=',',usecols=(2,),skiprows=2)
+    try:
+        if gb.glob(woamask_file):
+            # Use location of confirmed-existing user specified mask file
+            locs=[woamask_file]
+            found_by="user input location."
+        else:
+            # Try searching the python path for our maskfile
+            locs=[gb.glob(find_in_search_path('*/woa13_basinmask_01.msk',matchFunc=gb.glob))[0]]
+            found_by="searching python path."
+    except FileNotFoundError:
+        # Otherwise fall back on the web or hard coded locations
+        locs=["https://data.nodc.noaa.gov/woa/WOA13/MASKS/basinmask_01.msk",
+          "/Users/jml1/GitHub/Lauderdale_ligand_iron_microbe_feedback/woa13_basinmask_01.msk",
+          "/Users/jml1/GitHub/Lauderdale_2016_GBC/woa13_basinmask_01.msk",
+          "/Users/jml1/Dropbox_Work/Applications/MATLAB/mitgcm_toolbox/woa13_basinmask_01.msk"]
+        found_by="hard coded location."
+    finally:
+        from urllib.error      import HTTPError
+        # Initialize empty pandas data frame
+        woamask=pd.DataFrame()
+        # Cycle through location list to read the mask file
+        for fname in locs:
+            try:
+                woamask = pd.read_csv(fname,header=1)
+                print("read mask file at "+fname+" found by "+found_by)
+                break
+            except (HTTPError,FileNotFoundError,IOError,OSError):
+                # If there's an error, just continue down the location list
+                continue
+        # test to see if the mask was actually successfully loaded nd raise an error if not
+        if woamask.empty:
+            raise FileNotFoundError("Can't find mask file on python search path, on the web, or at hard coded locations.")
+        else:
+            x = woamask.Longitude.values
+            y = woamask.Latitude .values
+            basinfile = woamask.Basin_0m.values
         
     # Find out if the grid has been rotated and rotate so range is the same as input grid
     if (np.min(x)<0) != (np.min(xc)<0):
@@ -292,11 +355,11 @@ def oceanmasks(xc,yc,maskin):
     
     # if input was 3d, then extent mask to 3d
     if nzdim>0:
-        atlantic_mask = np.tile(atlantic_mask[:,:,np.newaxis],(1,1,nzdim))*maskin
-        pacific_mask  = np.tile(pacific_mask [:,:,np.newaxis],(1,1,nzdim))*maskin
-        indian_mask   = np.tile(indian_mask  [:,:,np.newaxis],(1,1,nzdim))*maskin
-        so_mask       = np.tile(so_mask      [:,:,np.newaxis],(1,1,nzdim))*maskin
-        arctic_mask   = np.tile(arctic_mask  [:,:,np.newaxis],(1,1,nzdim))*maskin
+        atlantic_mask = np.tile(atlantic_mask[:,:,np.newaxis],(1,1,nzdim))*modelmask
+        pacific_mask  = np.tile(pacific_mask [:,:,np.newaxis],(1,1,nzdim))*modelmask
+        indian_mask   = np.tile(indian_mask  [:,:,np.newaxis],(1,1,nzdim))*modelmask
+        so_mask       = np.tile(so_mask      [:,:,np.newaxis],(1,1,nzdim))*modelmask
+        arctic_mask   = np.tile(arctic_mask  [:,:,np.newaxis],(1,1,nzdim))*modelmask
         
     return atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask
 
