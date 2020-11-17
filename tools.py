@@ -169,7 +169,8 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
     grd['rAs']=grd.rAs* grd.HFacS.isel(ZC=0)
     grd['rAw']=grd.rAw* grd.HFacW.isel(ZC=0)
     # This is dodgy, but not sure what else to do...
-    grd['rAz']=grd.rAz* (grd.HFacW*grd.HFacS).isel(ZC=0)
+    grd['rAz']=grd.rAz* (grd.HFacW.interp(coords={'YC':grd['YG']},method='nearest')* \
+                         grd.HFacS.interp(coords={'XC':grd['XG']},method='nearest')).isel(ZC=0)
 
     metrics = {
         ('X',): ['dxC', 'dxG'], # X distances
