@@ -30,10 +30,106 @@ def find_in_search_path(pathname, matchFunc=os.path.isfile):
     raise FileNotFoundError("Can't find file %s" % pathname)
 
 # %% REGRIDDING, AXES, AND FILE LOADING ROUTINES
+def _mfd_preprocess(self):
+    # Internal function for preprocessing tile files for merging (need to get rid of Xp! and Yp1 overlaps)
+    
+    # Have to make assumptions about domain decomposition 
+    npx = self.attrs['nPx']
+    npy = self.attrs['nPy']
+    try:
+        tile= self.attrs['tile_number']
+        
+        # "right edge" of grid should not be modified along XG axis for these tiles
+        dont_knock_xmax=np.arange(npx,npx*npy+1,npx)
+    
+        # "top row" of grid should not be modified along YG axis for these tiles
+        dont_knock_ymax=np.arange(npx*(npy-1)+1,npx*npy+1,1)
+    except KeyError:
+        # This will error out if it's a global file, but you don't want to preprocess this anyway
+        tile=1
+        dont_knock_xmax=[1]
+        dont_knock_ymax=[1]
+    
+    if tile == "global":
+        # This will error out if it's a global file, but you don't want to preprocess this anyway
+        tile=1
+        dont_knock_xmax=[1]
+        dont_knock_ymax=[1]
+        
+    # Pkg/diagnostics hack for ZMD, ZUD, ZLD, and ZL dimensions that have no coordinate values
+    diagdict=dict()
+    if any(s.startswith('Zmd') for s in list(self.dims)):
+        dim='Zmd{:06d}'.format(len(self.diag_levels.data))
+        diagdict[dim]=self.diag_levels.data
+    if any(s.startswith('Zld') for s in list(self.dims)):
+        dim='Zld{:06d}'.format(len(self.diag_levels.data))
+        diagdict[dim]=self.diag_levels.data
+    if any(s.startswith('Zud') for s in list(self.dims)):
+        dim='Zud{:06d}'.format(len(self.diag_levels.data))
+        diagdict[dim]=self.diag_levels.data
+    if any(s.startswith('Zd') for s in list(self.dims)):
+        dim='Zd{:06d}'.format(len(self.diag_levels.data))
+        diagdict[dim]=self.diag_levels.data 
+        
+    self=self.assign_coords(diagdict)
+    
+    # Define shorter Xp1 and Yp1 axes, only for interior tiles
+    rendict=dict()
+    if 'Xp1' in self.dims and tile not in dont_knock_xmax:
+        newXp1=self['Xp1'].isel(Xp1=slice(0,-1)).data
+        self['newXp1']=xr.DataArray(newXp1, coords=[newXp1],dims=['newXp1'])
+        rendict["newXp1"]="Xp1"
+
+    if 'Yp1' in self.dims and tile not in dont_knock_ymax:
+        newYp1=self['Yp1'].isel(Yp1=slice(0,-1)).data
+        self['newYp1']=xr.DataArray(newYp1, coords=[newYp1],dims=['newYp1'])
+        rendict["newYp1"]="Yp1"
+
+    # Process the variables on to shorter axes
+    for var in self.variables:
+        if var  not in ['newXp1', 'newYp1']:
+            origdim=self[var].dims
+            seldict=dict()
+            coodict=dict()
+            
+            # Prepopulate coordinate dict with original dimensions
+            for dim in origdim:
+                coodict[dim]=self[dim].data
+            # Remove horizontal dimensions to be replaced
+            for dim in list(set(['X', 'Xp1', 'Y', 'Yp1']) & set(list(coodict.keys()))):
+                del coodict[dim]
+            
+            if 'Yp1' in origdim and tile not in dont_knock_ymax:
+                seldict["Yp1"]=slice(0,-1)
+                coodict["newYp1"]=newYp1
+            elif 'Yp1' in origdim and tile in dont_knock_ymax:
+                coodict["Yp1"]=self['Yp1'].data
+            elif 'Y' in origdim:
+                coodict["Y"]=self['Y'].data
+            
+            if 'Xp1' in origdim and tile not in dont_knock_xmax:
+                seldict["Xp1"]=slice(0,-1)
+                coodict["newXp1"]=newXp1
+            elif 'Xp1' in origdim and tile in dont_knock_xmax:
+                coodict["Xp1"]=self['Xp1'].data
+            elif 'X' in origdim:
+                coodict["X"]=self['X'].data
+            
+            if seldict:
+                self[var]=xr.DataArray(self[var].isel(seldict),
+                                       coords=list(coodict.values()),
+                                       dims=list(coodict.keys()))
+        
+    if rendict:
+        return self.reset_coords(names=list(rendict.values()),drop=True).rename(rendict).chunk()
+    else:
+        return self.chunk()
+
 def open_ncfile(file_pattern,doconform_axes=True,chunking=None,strange_axes=dict(),grid=[]):
     """
-        Read in data from a netcdf file (file_pattern) using xarray, which can be chunked via dask by
-          setting chunking to a dictionary of chunks (e.g. {'T':2,'X':10,'Y':10,'Z':2}).
+        Read in data from a netcdf file (file_pattern, we CAN handle tile files!)) using xarray, 
+          which can be chunked via dask by setting chunking to a dictionary of chunks 
+          (e.g. {'T':2,'X':10,'Y':10,'Z':2}).
         For compatability with xgcm, the axes may need to be conformed to certain specifications. 
           set conform_axes=False to override this. We can handle conversions between many axis names, but
           if there is a particularly difficult set (thanks, pkg/diagnostics) set the conversion within the
@@ -41,11 +137,14 @@ def open_ncfile(file_pattern,doconform_axes=True,chunking=None,strange_axes=dict
     """
     if doconform_axes:
         if not grid:
-            data=conform_axes(xr.open_dataset(gb.glob(file_pattern)[0],chunks=chunking),strange_ax=strange_axes)
+            data=conform_axes(xr.open_mfdataset(gb.glob(file_pattern),preprocess=_mfd_preprocess,
+                               decode_times=False,data_vars='minimal').chunk(chunking),strange_ax=strange_axes)
         else:
-            data=conform_axes(xr.open_dataset(gb.glob(file_pattern)[0],chunks=chunking),strange_ax=strange_axes,grd=grid)
+            data=conform_axes(xr.open_mfdataset(gb.glob(file_pattern),preprocess=_mfd_preprocess,
+                               decode_times=False,data_vars='minimal').chunk(chunking),strange_ax=strange_axes,grd=grid)
     else:
-        data=xr.open_dataset(gb.glob(file_pattern)[0],chunks=chunking)
+        data=xr.open_mfdataset(gb.glob(file_pattern),preprocess=_mfd_preprocess,
+                               decode_times=False,data_vars='minimal').chunk(chunking)
     return data
 
 def open_bnfile(fname,sizearr=(12,15,64,128),prec='>f4'):
@@ -73,9 +172,9 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
     """ loadgrid(fname,sizearr,prec) reads a netcdf grid file and returns it as a
         xarray, with a few additional items.
         
-        fname is the file name,
+        fname is the file name, could be a file pattern (we CAN handle tile files!)
     """     
-    grd=xr.open_dataset(fname,chunks=chunking)
+    grd=xr.open_mfdataset(fname,preprocess=_mfd_preprocess,data_vars='minimal').chunk(chunking)
     
     if "T" in grd.dims:
         grd=grd.squeeze('T')
@@ -233,44 +332,28 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
     if missing_ax != []:        
         print("Attributes could not be added for axes: "+','.join(missing_ax))
 
-    # Check that all the dimensions have coordinate values. Should be able to import these from grid_data
-    missing_ax=[]
+    # Check that all the dimensions have coordinate values (or want to override the coord values with strange_ax).
+    missing_ax=dict()
     for ax in dsin.dims:
-        if ax not in dsin.coords:
-            missing_ax.append(ax)
+        if ax in list(strange_ax.values()) or ax not in dsin.coords:
+            # Should be able to import these from grid_data
             if not grd:
                 # Be cheeky and reload the grid, which should have the axes needed
                 grd=xr.open_dataset(gb.glob("grid*nc")[0]).squeeze('T')
                 grd.close()
                 grd=grd.drop(['XC','YC','XG','YG'])
                 grd=conform_axes(grd)
-            
-            if dsin.dims[ax] > 1:
-                try:
-                    dsin=dsin.assign_coords(ax=grd.coords[ax])
-                except NameError:
-                    try:
-                        dsin=dsin.assign_coords(ax=grid.coords[ax])
-                    except NameError:
-                        try:
-                            dsin=dsin.assign_coords(ax=gridfile.coords[ax])
-                        except NameError:
-                            raise()                   
-                    
-                
+            if dsin.dims[ax] > 1:    
+                missing_ax[ax]=grd.coords[ax]
             else:
-                # Hack for the single layer diag files
-                # This isnt working....
-#                dsin=dsin.assign_coords(ax=dsin[ax])
-                # Squeeze the singleton dimension
-                dsin=dsin.squeeze(ax)
-            
-            if missing_ax != []:        
-                    print("Coordinates added for axes: "+','.join(missing_ax))    
+                dsin=dsin.squeeze(ax).drop(ax)
+    dsin=dsin.assign_coords(missing_ax)
+
+    if missing_ax:        
+        print("Coordinates added or altered for axes: "+','.join(list(missing_ax.keys())))    
     
-    # Bit annoying that "ax" gets added as a coordinate each time too! Zap it.
-    if 'ax' in dsin.coords:
-        dsin=dsin.drop('ax')
+    if 'diag_levels' in dsin.variables:
+        dsin=dsin.drop_vars('diag_levels')
 
     return dsin
 
