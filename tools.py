@@ -70,8 +70,9 @@ def _mfd_preprocess(self):
     if any(s.startswith('Zd') for s in list(self.dims)):
         dim='Zd{:06d}'.format(len(self.diag_levels.data))
         diagdict[dim]=self.diag_levels.data 
-        
-    self=self.assign_coords(diagdict)
+    
+    if diagdict:
+        self=self.assign_coords(diagdict)
     
     # Define shorter Xp1 and Yp1 axes, only for interior tiles
     rendict=dict()
@@ -168,7 +169,7 @@ def open_bnfile(fname,sizearr=(12,15,64,128),prec='>f4'):
     
     return binin
     
-def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
+def loadgrid(fname='grid.glob.nc',basin_masks=True,doconform_axes=True,chunking=None):
     """ loadgrid(fname,sizearr,prec) reads a netcdf grid file and returns it as a
         xarray, with a few additional items.
         
@@ -255,29 +256,32 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,chunking=None):
         finally:    
             grd.close()
     
-    # These variable conflict with future axis names
-    grd=grd.drop(['XC','YC','XG','YG'])
+    if doconform_axes:
+        # Attempt to conform axes to conventions
+        # These variable conflict with future axis names
+        grd=grd.drop(['XC','YC','XG','YG'])
     
-    # Attempt to conform axes to conventions
-    grd=conform_axes(grd)
+        grd=conform_axes(grd)
 
-    # generate XGCM grid, with metrics for grid aware calculations
-    # Have to make sure the metrics are properly masked
-    # issue for area, but not volume... 
-    grd['rA' ]=grd.rA * grd.HFacC.isel(ZC=0)
-    grd['rAs']=grd.rAs* grd.HFacS.isel(ZC=0)
-    grd['rAw']=grd.rAw* grd.HFacW.isel(ZC=0)
-    # This is dodgy, but not sure what else to do...
-    grd['rAz']=grd.rAz* (grd.HFacW.interp(coords={'YC':grd['YG']},method='nearest')* \
-                         grd.HFacS.interp(coords={'XC':grd['XG']},method='nearest')).isel(ZC=0)
-
-    metrics = {
-        ('X',): ['dxC', 'dxG'], # X distances
-        ('Y',): ['dyC', 'dyG'], # Y distances
-        ('Z',): ['dzW', 'dzS', 'dzC'], # Z distances
-        ('X', 'Y'): ['rA', 'rAz', 'rAs', 'rAw'] # Areas
-        }
-    xgrd = xgcm.Grid(grd,periodic=['X','Y'],metrics=metrics)
+        # generate XGCM grid, with metrics for grid aware calculations
+        # Have to make sure the metrics are properly masked
+        # issue for area, but not volume... 
+        grd['rA' ]=grd.rA * grd.HFacC.isel(ZC=0)
+        grd['rAs']=grd.rAs* grd.HFacS.isel(ZC=0)
+        grd['rAw']=grd.rAw* grd.HFacW.isel(ZC=0)
+        # This is dodgy, but not sure what else to do...
+        grd['rAz']=grd.rAz* (grd.HFacW.interp(coords={'YC':grd['YG']},method='nearest')* \
+                             grd.HFacS.interp(coords={'XC':grd['XG']},method='nearest')).isel(ZC=0)
+    
+        metrics = {
+            ('X',): ['dxC', 'dxG'], # X distances
+            ('Y',): ['dyC', 'dyG'], # Y distances
+            ('Z',): ['dzW', 'dzS', 'dzC'], # Z distances
+            ('X', 'Y'): ['rA', 'rAz', 'rAs', 'rAw'] # Areas
+            }
+        xgrd = xgcm.Grid(grd,periodic=['X','Y'],metrics=metrics)
+    else:
+        xgrd=[]
     
     return grd,xgrd
     
@@ -347,9 +351,9 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
                 missing_ax[ax]=grd.coords[ax]
             else:
                 dsin=dsin.squeeze(ax).drop(ax)
-    dsin=dsin.assign_coords(missing_ax)
-
+    
     if missing_ax:        
+        dsin=dsin.assign_coords(missing_ax)
         print("Coordinates added or altered for axes: "+','.join(list(missing_ax.keys())))    
     
     if 'diag_levels' in dsin.variables:
@@ -810,8 +814,7 @@ def get_micro_reference(fname):
             fqc[ii,jj]=np.double(tmp.data[ii,jj].tostring().decode("utf-8"))
     #idp_fe = nm.masked_where(np.logical_or(fqc>2,idp_dep>=critdepth),idp.variables[vars['FeT']][:])
     idp_fe = nm.masked_where(fqc>2,idp.variables[vars['FeT']][:])
-    fref   = xr.DataArray(idp_fe,dims=('N_STATIONS','N_SAMPLES'))
-    
+    fref   = xr.DataArray(idp_fe,dims=('N_STATIONS','N_SAMPLES'))    
     l1qc = np.zeros((nstat,nsamp))
     tmp = idp.variables[vars['L1QC']][:]
     for ii in range(nstat):
@@ -843,13 +846,13 @@ def get_micro_reference(fname):
     
     return idpx, idpy, idpz, fref, lref
 
-def calc_cost(modin,ref,stdev,iters=1):  
+def calc_cost(modin,ref,stdev,iters=1,sumdims=['XC','YC','ZC']):  
     if issubclass(type(modin), xr.core.dataarray.DataArray) or issubclass(type(ref), xr.core.dataarray.DataArray):
     # use the xarray-based methods  
-        sumdims=[]      
-        for ax in modin.dims:
-            if ax.lower().find('t')==-1:
-                sumdims.append(ax)
+#        sumdims=[]      
+#        for ax in modin.dims:
+#            if ax.lower().find('t')==-1:
+#                sumdims.append(ax)
             
         cost=(np.power(modin-ref,2)/np.power(stdev,2)).sum(sumdims)
     else: # Use the old way using masked arrays or ndarrays
