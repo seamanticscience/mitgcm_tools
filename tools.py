@@ -59,17 +59,17 @@ def _mfd_preprocess(self):
     # Pkg/diagnostics hack for ZMD, ZUD, ZLD, and ZL dimensions that have no coordinate values
     diagdict=dict()
     if any(s.startswith('Zmd') for s in list(self.dims)):
-        dim='Zmd{:06d}'.format(len(self.diag_levels.data))
-        diagdict[dim]=self.diag_levels.data
+        dim='Zmd{:06d}'.format(len(self.diag_levels.values))
+        diagdict[dim]=self.diag_levels.values
     if any(s.startswith('Zld') for s in list(self.dims)):
-        dim='Zld{:06d}'.format(len(self.diag_levels.data))
-        diagdict[dim]=self.diag_levels.data
+        dim='Zld{:06d}'.format(len(self.diag_levels.values))
+        diagdict[dim]=self.diag_levels.values
     if any(s.startswith('Zud') for s in list(self.dims)):
-        dim='Zud{:06d}'.format(len(self.diag_levels.data))
-        diagdict[dim]=self.diag_levels.data
+        dim='Zud{:06d}'.format(len(self.diag_levels.values))
+        diagdict[dim]=self.diag_levels.values
     if any(s.startswith('Zd') for s in list(self.dims)):
-        dim='Zd{:06d}'.format(len(self.diag_levels.data))
-        diagdict[dim]=self.diag_levels.data 
+        dim='Zd{:06d}'.format(len(self.diag_levels.values))
+        diagdict[dim]=self.diag_levels.values 
     
     if diagdict:
         self=self.assign_coords(diagdict)
@@ -77,12 +77,12 @@ def _mfd_preprocess(self):
     # Define shorter Xp1 and Yp1 axes, only for interior tiles
     rendict=dict()
     if 'Xp1' in self.dims and tile not in dont_knock_xmax:
-        newXp1=self['Xp1'].isel(Xp1=slice(0,-1)).data
+        newXp1=self['Xp1'].isel(Xp1=slice(0,-1)).values
         self['newXp1']=xr.DataArray(newXp1, coords=[newXp1],dims=['newXp1'])
         rendict["newXp1"]="Xp1"
 
     if 'Yp1' in self.dims and tile not in dont_knock_ymax:
-        newYp1=self['Yp1'].isel(Yp1=slice(0,-1)).data
+        newYp1=self['Yp1'].isel(Yp1=slice(0,-1)).values
         self['newYp1']=xr.DataArray(newYp1, coords=[newYp1],dims=['newYp1'])
         rendict["newYp1"]="Yp1"
 
@@ -95,7 +95,7 @@ def _mfd_preprocess(self):
             
             # Prepopulate coordinate dict with original dimensions
             for dim in origdim:
-                coodict[dim]=self[dim].data
+                coodict[dim]=self[dim].values
             # Remove horizontal dimensions to be replaced
             for dim in list(set(['X', 'Xp1', 'Y', 'Yp1']) & set(list(coodict.keys()))):
                 del coodict[dim]
@@ -104,17 +104,17 @@ def _mfd_preprocess(self):
                 seldict["Yp1"]=slice(0,-1)
                 coodict["newYp1"]=newYp1
             elif 'Yp1' in origdim and tile in dont_knock_ymax:
-                coodict["Yp1"]=self['Yp1'].data
+                coodict["Yp1"]=self['Yp1'].values
             elif 'Y' in origdim:
-                coodict["Y"]=self['Y'].data
+                coodict["Y"]=self['Y'].values
             
             if 'Xp1' in origdim and tile not in dont_knock_xmax:
                 seldict["Xp1"]=slice(0,-1)
                 coodict["newXp1"]=newXp1
             elif 'Xp1' in origdim and tile in dont_knock_xmax:
-                coodict["Xp1"]=self['Xp1'].data
+                coodict["Xp1"]=self['Xp1'].values
             elif 'X' in origdim:
-                coodict["X"]=self['X'].data
+                coodict["X"]=self['X'].values
             
             if seldict:
                 self[var]=xr.DataArray(self[var].isel(seldict),
@@ -207,48 +207,48 @@ def loadgrid(fname='grid.glob.nc',basin_masks=True,doconform_axes=True,chunking=
     if basin_masks:
         # Get basin masks
         try:
-            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').data,grd.latc.transpose('X','Y').data,grd.cmask.transpose('X','Y','Z').data)
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonc.transpose('X','Y').values,grd.latc.transpose('X','Y').values,grd.cmask.transpose('X','Y','Z').values)
                 
             grd['cmask_atlantic'] = xr.DataArray(atlantic_mask,\
-                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+                                coords=[grd.X.values, grd.Y.values, grd.Z.values], dims=['X', 'Y', 'Z'])
             grd['cmask_pacific']  = xr.DataArray(pacific_mask ,\
-                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+                                coords=[grd.X.values, grd.Y.values, grd.Z.values], dims=['X', 'Y', 'Z'])
             grd['cmask_indian']   = xr.DataArray(indian_mask  ,\
-                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+                                coords=[grd.X.values, grd.Y.values, grd.Z.values], dims=['X', 'Y', 'Z'])
             grd['cmask_so']       = xr.DataArray(so_mask      ,\
-                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+                                coords=[grd.X.values, grd.Y.values, grd.Z.values], dims=['X', 'Y', 'Z'])
             grd['cmask_arctic']   = xr.DataArray(arctic_mask  ,\
-                                coords=[grd.X.data, grd.Y.data, grd.Z.data], dims=['X', 'Y', 'Z'])
+                                coords=[grd.X.values, grd.Y.values, grd.Z.values], dims=['X', 'Y', 'Z'])
             grd['cmask_nh']       = grd.cmask.where(grd.coords['Y']>0)
             grd['cmask_sh']       = grd.cmask.where(grd.coords['Y']<=0)
             
-            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').data,grd.latu.transpose('Xp1','Y').data,grd.umask.transpose('Xp1','Y','Z').data)
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonu.transpose('Xp1','Y').values,grd.latu.transpose('Xp1','Y').values,grd.umask.transpose('Xp1','Y','Z').values)
             
             grd['umask_atlantic'] = xr.DataArray(atlantic_mask,\
-                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+                                coords=[grd.Xp1.values, grd.Y.values, grd.Z.values], dims=['Xp1', 'Y', 'Z'])
             grd['umask_pacific']  = xr.DataArray(pacific_mask ,\
-                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+                                coords=[grd.Xp1.values, grd.Y.values, grd.Z.values], dims=['Xp1', 'Y', 'Z'])
             grd['umask_indian']   = xr.DataArray(indian_mask  ,\
-                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+                                coords=[grd.Xp1.values, grd.Y.values, grd.Z.values], dims=['Xp1', 'Y', 'Z'])
             grd['umask_so']       = xr.DataArray(so_mask      ,\
-                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+                                coords=[grd.Xp1.values, grd.Y.values, grd.Z.values], dims=['Xp1', 'Y', 'Z'])
             grd['umask_arctic']   = xr.DataArray(arctic_mask  ,\
-                                coords=[grd.Xp1.data, grd.Y.data, grd.Z.data], dims=['Xp1', 'Y', 'Z'])
+                                coords=[grd.Xp1.values, grd.Y.values, grd.Z.values], dims=['Xp1', 'Y', 'Z'])
             grd['umask_nh']       = grd.umask.where(grd.coords['Y']>0)
             grd['umask_sh']       = grd.umask.where(grd.coords['Y']<=0)
              
-            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').data,grd.latv.transpose('X','Yp1').data,grd.vmask.transpose('X','Yp1','Z').data)
+            atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(grd.lonv.transpose('X','Yp1').values,grd.latv.transpose('X','Yp1').values,grd.vmask.transpose('X','Yp1','Z').values)
             
             grd['vmask_atlantic'] = xr.DataArray(atlantic_mask,\
-                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+                                coords=[grd.X.values, grd.Yp1.values, grd.Z.values], dims=['X', 'Yp1', 'Z'])
             grd['vmask_pacific']  = xr.DataArray(pacific_mask ,\
-                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+                                coords=[grd.X.values, grd.Yp1.values, grd.Z.values], dims=['X', 'Yp1', 'Z'])
             grd['vmask_indian']   = xr.DataArray(indian_mask  ,\
-                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+                                coords=[grd.X.values, grd.Yp1.values, grd.Z.values], dims=['X', 'Yp1', 'Z'])
             grd['vmask_so']       = xr.DataArray(so_mask      ,\
-                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+                                coords=[grd.X.values, grd.Yp1.values, grd.Z.values], dims=['X', 'Yp1', 'Z'])
             grd['vmask_arctic']   = xr.DataArray(arctic_mask  ,\
-                                coords=[grd.X.data, grd.Yp1.data, grd.Z.data], dims=['X', 'Yp1', 'Z'])
+                                coords=[grd.X.values, grd.Yp1.values, grd.Z.values], dims=['X', 'Yp1', 'Z'])
             grd['vmask_nh']       = grd.vmask.where(grd.coords['Yp1']>0)
             grd['vmask_sh']       = grd.vmask.where(grd.coords['Yp1']<=0)
         except (FileNotFoundError,IOError,OSError,TypeError):
