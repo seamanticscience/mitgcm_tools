@@ -733,118 +733,201 @@ def get_macro_reference(fname,Rnp=16):
     
     return woa_nut
 
-def get_micro_reference(fname):
-# set Fe and L reference for the cost function from  GEOTRACES IDP 2017 
-    import netCDF4  as nc
-    import numpy.ma as nm
+def complexation(metal_tot, ligand_tot, beta):
+        """
+        Given a total metal concentration, ligand concentration, and beta value, this
+        function will return the total concentration of free metal that is not bound to
+        ligands (i.e. is free and prone to scavanging).
+        Parameters
+        ----------
+        metal_tot : float 
+            current total concentration of metal, value in mol per cubic meter 
+        ligand_tot : float
+            current total concentration of ligand, value in mol per cubic meter
+        beta : float
+            constant value, defines equilibrium position between free metal + ligand
+            and the complexed form. Value in kg/mol
+        Returns
+        -------
+        Float, current concentration of free metal.
+        """
+        term_1 = (metal_tot - 1/beta - ligand_tot)/2
+        term_2 = ((beta*(ligand_tot - metal_tot + 1/beta)**2 + 4*metal_tot)/(4*beta))**(1/2)
     
-    idp  = nc.Dataset(fname, mode='r')
+        return term_1 + term_2
+
+def read_geotraces_idp(fname,varsin=None):
+    from contextlib import suppress
+    
+    # QC string on the variable name changed between IDP2017 and IDP2021
+    if (fname.find('2017') != -1):
+        # Quality control flags (2017) are:
+        # 1 Good:  Passed documented required QC tests
+        # 2 Not evaluated, not available or unknown: Used for data when no QC test performed or the information on quality is not available
+        # 3 Questionable/suspect: Failed non-critical documented metric or subjective test(s)
+        # 4 Bad: Failed critical documented QC test(s) or as assigned by the data provider
+        # 9 Missing data: Used as place holder when data are missing   
+        qcstr ='_QC'
+        qcgood=2 
+    elif (fname.find('2021') != -1):
+        # Quality control flags (2021) are:
+        # 48: no_quality_control
+        # 49: good_value
+        # 50: probably_good_value
+        # 51: probably_bad_value
+        # 52: bad_value
+        # 53: changed_value
+        # 54: value_below_detection
+        # 55: value_in_excess
+        # 56: interpolated_value
+        # 57: missing_value
+        # 65: value_phenomenon_uncertain
+        # 66: nominal_value
+        # 81: value_below_limit_of_quantification
+        qcstr='_qc'
+        qcgood=50
         
-    # Variables of interest
-    vars= {
-    'Cruise':'metavar1', # Cruise
-    'Press' :'var1',     # Pressure
-    'Depth' :'var2',     # Depth (m)
-    'Bottle':'var4',     # Bottle number
-    'Bottle2':'var5',    # BODC Bottle number?
-    'Firing':'var6',     # Firing Sequence
-    'Theta' :'var7',     # CTDTEMP (°C) 
-    'Salt'  :'var8',     # CTDSAL
-    'OXY'   :'var20',    # Oxygen concentration (umol/kg)
-    'OQC'   :'var20_QC', # OxygenQuality control flags
-    'PO4'   :'var21',    # Phosphate (umol/kg)
-    'PQC'   :'var21_QC', # Phosphate Quality control flags
-    'SIT'   :'var23',    # Silicate (umol/kg)
-    'SIQC'  :'var23_QC', # Silicate Quality control flags
-    'NO3'   :'var24',    # Nitrate (umol/kg)
-    'NQC'   :'var24_QC', # Nitrate Quality control flags
-    'ALK'   :'var30',    # ALK (umol/kg)
-    'AQC'   :'var30_QC', # ALK Quality control flags
-    'DIC'   :'var31',    # DIC (umol/kg)
-    'CQC'   :'var31_QC', # DIC Quality control flags
-    'FeT'   :'var73',    # Fe (nmol/kg)
-    'FQC'   :'var73_QC', # Fe Quality control flags
-    'L1Fe'  :'var231',   # L1-Fe Ligand (nmol/kg)
-    'L1QC'  :'var231_QC',# L1-Fe Quality control flags
-    'L2Fe'  :'var233',   # L2-Fe Ligand (nmol/kg)
-    'L2QC'  :'var233_QC',# L2-Fe Quality control flags
-    }
+    # Read the netcdf file into xarray dataset
+    tmp=xr.open_dataset(fname)
+
+    if varsin is None:
+        # We want to process the whole idp, which may take a few mins
+        varlist = list(tmp.keys())
+    else:
+        # Need to add QC variables for processing
+        varlist=[sub + '_QC' for sub in varsin] + varsin
     
-    # size of arrays
-    nsamp =idp.dimensions['N_SAMPLES' ].size
-    nstat =idp.dimensions['N_STATIONS'].size
-    #nchar =idp.dimensions['STRING6'].size
+    tmp['N_STATIONS']=np.arange(tmp.dims['N_STATIONS'])
+    tmp['N_SAMPLES' ]=np.arange(tmp.dims['N_SAMPLES' ])
     
-    # load variables
-    idp_lon = np.transpose([idp.variables['longitude'][:] for _ in range(nsamp)])
-    idp_lon = np.where(idp_lon>180, idp_lon-360, idp_lon)
-    idp_lon_mod=idp_lon.copy()
-    idp_lon_mod[idp_lon_mod<0]=idp_lon_mod[idp_lon_mod<0]+360
+    long_name_dict=dict()
+    drop_name_list=list()
     
+    for var in tmp.keys():
+        if (var in varlist) or (var.find('meta') == 0):
+            #print(var)
+            if "long_name" in tmp[var].attrs.keys():
+                # Rename variables to their long names
+                long_name_dict[var] = tmp[var].attrs['long_name'].lower()
+                if (fname.find('2017') != -1): 
+                    if (tmp[var].attrs['long_name'].lower() == 'ctdoxy'):
+                        # Rename the CTD variables if they exist in the varlist
+                        long_name_dict[list(long_name_dict.keys())[list(long_name_dict.values()).index('ctdoxy')]]='ctdoxy_d_conc_sensor'
+                    elif (tmp[var].attrs['long_name'].lower() == 'ctdtmp'):
+                        # Rename the CTD variables if they exist in the varlist
+                        long_name_dict[list(long_name_dict.keys())[list(long_name_dict.values()).index('ctdtmp')]]='ctdtmp_t_value_sensor'
+                    elif (tmp[var].attrs['long_name'].lower() == 'ctdsal'):
+                        # Rename the CTD variables if they exist in the varlist
+                        long_name_dict[list(long_name_dict.keys())[list(long_name_dict.values()).index('ctdsal')]]='ctdsal_d_conc_sensor'
+
+            if (var.find(qcstr) != -1):
+                # A quality control flag, that we eventuall want to drop
+                drop_name_list.append(var)
+                
+                if tmp[var].dtype == 'O': 
+                    # Convert "char" QC object into a float (IDP2017 only)
+                    qc_flags=tmp[var].astype('float')
+                else:
+                    qc_flags=tmp[var]
+        
+                # Now apply the QC flag to the data variable
+                tmp[var[:-3]] = tmp[var[:-3]].where(qc_flags<=qcgood)
+                
+                with suppress(KeyError):
+                    # Also apply the QC flag to the STD variable
+                    tmp[var[:-3]+'_STD'] = tmp[var[:-3]+'_STD'].where(qc_flags<=qcgood)
+                 
+            if (var.find('meta') == 0): 
+                if (tmp[var].dtype == 'O' or str(tmp[var].dtype).startswith('|S')):
+                    # Convert "char" metavar object into a string
+                    tmp[var]=tmp[var].astype('str')
+        else:
+            drop_name_list.append(var)
+       
+    idp=tmp.rename(long_name_dict).drop(drop_name_list)
     
-    idp_lat = np.transpose([idp.variables['latitude' ][:] for _ in range(nsamp)])
-    idp_dep = -idp.variables[vars['Depth']][:]
-    #idp_bot = idp.variables[vars['Bottle']][:] # get the bottle numbers for depth masking
-    #umol= idp.variables[vars['PO4']].units
-    #nmol=idp.variables[vars['FeT']].units
-    
-    # Use for later interpolation
-    idpx=xr.DataArray(idp_lon_mod,dims=('N_STATIONS','N_SAMPLES'))
-    idpy=xr.DataArray(idp_lat,dims=('N_STATIONS','N_SAMPLES'))
-    idpz=xr.DataArray(idp_dep,dims=('N_STATIONS','N_SAMPLES'))
-    
-    #critdepth=np.zeros((nstat,nsamp)) # Going to ignore data points within 1000m of the bottom
-    #for ii in range(nstat):
-    #    if np.max(idp_dep[ii,:]) > 0.75:
-    #        critdepth[ii,:]=np.max(idp_dep[ii,:])-1
-    #    else:
-    #        critdepth[ii,:]=np.max(idp_dep[ii,:])
-            
-    # Quality control flags are:
-    # 1 Good:  Passed documented required QC tests
-    # 2 Not evaluated, not available or unknown: Used for data when no QC test performed or the information on quality is not available
-    # 3 Questionable/suspect: Failed non-critical documented metric or subjective test(s)
-    # 4 Bad: Failed critical documented QC test(s) or as assigned by the data provider
-    # 9 Missing data: Used as place holder when data are missing
-    
-    fqc = np.zeros((nstat,nsamp))
-    tmp = idp.variables[vars['FQC']][:]
-    for ii in range(nstat):
-        for jj in range(nsamp):
-            fqc[ii,jj]=np.double(tmp.data[ii,jj].tostring().decode("utf-8"))
-    #idp_fe = nm.masked_where(np.logical_or(fqc>2,idp_dep>=critdepth),idp.variables[vars['FeT']][:])
-    idp_fe = nm.masked_where(fqc>2,idp.variables[vars['FeT']][:])
-    fref   = xr.DataArray(idp_fe,dims=('N_STATIONS','N_SAMPLES'))    
-    l1qc = np.zeros((nstat,nsamp))
-    tmp = idp.variables[vars['L1QC']][:]
-    for ii in range(nstat):
-        for jj in range(nsamp):
-            l1qc[ii,jj]=np.double(tmp.data[ii,jj].tostring().decode("utf-8"))
-    #idp_l1 = nm.masked_where(np.logical_or(l1qc>2,idp_dep>=critdepth),idp.variables[vars['L1Fe']][:])
-    idp_l1 = nm.masked_where(l1qc>2,idp.variables[vars['L1Fe']][:])
-    idpxl1 = xr.DataArray(idp_l1,dims=('N_STATIONS','N_SAMPLES'))        
-    
-    l2qc = np.zeros((nstat,nsamp))
-    tmp = idp.variables[vars['L2QC']][:]
-    for ii in range(nstat):
-        for jj in range(nsamp):
-            l2qc[ii,jj]=np.double(tmp.data[ii,jj].tostring().decode("utf-8"))
-    #idp_l2 = nm.masked_where(np.logical_or(l2qc>2,idp_dep>=critdepth),idp.variables[vars['L2Fe']][:])
-    idp_l2 = nm.masked_where(l2qc>2,idp.variables[vars['L2Fe']][:])
-    idpxl2 = xr.DataArray(idp_l2,dims=('N_STATIONS','N_SAMPLES'))
-    
-    # Add L1 nd L2 for total and sort out common mask
-    #idp_lt = nm.masked_where(np.logical_and(idp_l1.mask,idp_l2.mask),idp_l1+idp_l2)
-    lref   = idpxl1+idpxl2
-    
-    # close the file
-    idp.close()
+    # Expand dimensions of these variables
+    idp['lon']=idp.longitude.broadcast_like(idp['depth'])
+    idp['lat']=idp.latitude .broadcast_like(idp['depth'])
     
     # Get basin masks
-    #idp_mask=np.ones(np.shape(idp_lon))
-    #idp_atlantic_mask, idp_pacific_mask, idp_indian_mask, idp_so_mask, idp_arctic_mask = utils.oceanmasks(idp_lon_mod,idp_lat,idp_mask)
+    idp['mask']=xr.ones_like(idp['depth'])
     
-    return idpx, idpy, idpz, fref, lref
+    atlantic_mask, pacific_mask, indian_mask, so_mask, arctic_mask = oceanmasks(idp['lon'].values,idp['lat'].values,idp['mask'].values)
+    
+    idp['atlantic_mask'] = xr.DataArray(data=atlantic_mask, dims=["N_STATIONS", "N_SAMPLES"])
+    idp['pacific_mask' ] = xr.DataArray(data=pacific_mask , dims=["N_STATIONS", "N_SAMPLES"])
+    idp['indian_mask'  ] = xr.DataArray(data=indian_mask  , dims=["N_STATIONS", "N_SAMPLES"])
+    idp['so_mask'      ] = xr.DataArray(data=so_mask      , dims=["N_STATIONS", "N_SAMPLES"])
+    idp['arctic_mask'  ] = xr.DataArray(data=arctic_mask  , dims=["N_STATIONS", "N_SAMPLES"])
+    return idp
+
+def get_micro_reference(fname):
+# set Fe and L reference for the cost function from  GEOTRACES IDP 2017 or 2021 
+    try:
+        df=pd.read_csv(fname.replace(".nc","_variables.txt"), delimiter='\t')
+    
+        # Variables of interest
+        varlist=[df.loc[(df["Variable"].str.find(var)>=0)]['nc Variable'].tolist()[0] for var in 
+                ["Latitude"               , # Latitude
+                 "Longitude"              , # Longitude
+                 "DEPTH"                  , # Depth (m)
+                 "Fe_D_CONC_BOTTLE"       , # Fe (nmol/kg)
+                 "L1Fe_D_CONC_BOTTLE"     , # L1-Fe Ligand (nmol/kg)
+                 "L2Fe_D_CONC_BOTTLE"     , # L2-Fe Ligand (nmol/kg)
+                 "L1Fe_D_LogK_BOTTLE"     , # L1-Fe stability coefficient (nmol/kg)
+                 "L2Fe_D_LogK_BOTTLE"     , # L2-Fe stability coefficient (nmol/kg)
+                 ]]
+        if (fname.find('2021') != -1):
+            # Ligand concentration if only one group of ligands was found (by the software)
+            varlist.append(df.loc[(df["Variable"].str.find("LFe_D_CONC_BOTTLE")>=0)]['nc Variable'].tolist()[0])
+            varlist.append(df.loc[(df["Variable"].str.find("LFe_D_LogK_BOTTLE")>=0)]['nc Variable'].tolist()[0])
+    except FileNotFoundError:
+        varlist=None
+    
+    # Given the file list (or no file list), load the IDP dataset
+    idp=read_geotraces_idp(fname,varlist)
+    
+    #idp['depth']=-0.001*idp['depth'] # convert +ve metres to -ve km
+        
+    if (fname.find('2021') != -1):
+        # Ligand concentration if only one group of ligands was found (by the software)
+        # I'm adjusting the ligands again...some of these are v high (>10nmol/kg), but surely outliers
+        idp['ltfe_d_conc_bottle'] = idp['l1fe_d_conc_bottle'].where(idp['l1fe_d_conc_bottle']<10.0).fillna(0.0) + \
+                                    idp['l2fe_d_conc_bottle'].where(idp['l2fe_d_conc_bottle']<10.0).fillna(0.0) + \
+                                    idp['lfe_d_conc_bottle' ].where(idp['lfe_d_conc_bottle' ]<10.0).fillna(0.0)
+        idp['ltfe_d_conc_bottle'] = idp['ltfe_d_conc_bottle'].where(idp['ltfe_d_conc_bottle']>0.0)
+    
+        # Weighted mean of ligand stability coefficients
+#        idp['ltfe_d_logk_bottle'] = (idp['l1fe_d_conc_bottle'].where(idp['l1fe_d_conc_bottle']<10.0).fillna(0.0)*idp['l1fe_d_logk_bottle'].fillna(0.0)+ \
+#                                     idp['l2fe_d_conc_bottle'].where(idp['l2fe_d_conc_bottle']<10.0).fillna(0.0)*idp['l2fe_d_logk_bottle'].fillna(0.0)+ \
+#                                     idp['lfe_d_conc_bottle' ].where(idp['lfe_d_conc_bottle' ]<10.0).fillna(0.0)*idp['lfe_d_logk_bottle' ].fillna(0.0))/\
+#                                     idp['ltfe_d_conc_bottle']
+    else:   
+        # I'm adjusting the ligands again...some of these are v high (>10nmol/kg), but surely outliers
+        idp['ltfe_d_conc_bottle'] = idp['l1fe_d_conc_bottle'].where(idp['l1fe_d_conc_bottle']<10.0).fillna(0.0) + \
+                                    idp['l2fe_d_conc_bottle'].where(idp['l2fe_d_conc_bottle']<10.0).fillna(0.0)
+    
+#        idp['lfe_d_conc_bottle' ] = idp['ltfe_d_conc_bottle']*np.nan
+        
+        # Weighted mean of ligand stability coefficients
+#        idp['ltfe_d_logk_bottle'] = (idp['l1fe_d_conc_bottle'].where(idp['l1fe_d_conc_bottle']<10.0).fillna(0.0)*idp['l1fe_d_logk_bottle'].fillna(0.0)+ \
+#                                     idp['l2fe_d_conc_bottle'].where(idp['l2fe_d_conc_bottle']<10.0).fillna(0.0)*idp['l2fe_d_logk_bottle'].fillna(0.0))/\
+#                                     idp['ltfe_d_conc_bottle']
+        
+    idp['ltfe_d_conc_bottle'] = idp['ltfe_d_conc_bottle'].where(idp['ltfe_d_conc_bottle']>0.0)    
+#    idp['ltfe_d_logk_bottle'] = idp['ltfe_d_logk_bottle'].where(idp['ltfe_d_logk_bottle']>0.0)
+    
+    # I'm adjusting the iron again...some of these are either negative or v high (>10nmol/kg), but surely outliers
+    idp['fe_d_conc_bottle'] = idp['fe_d_conc_bottle'].where(idp['fe_d_conc_bottle']>0.0).where(idp['fe_d_conc_bottle']<10.0)      
+
+    fref = idp[['fe_d_conc_bottle',  'lat','lon','depth']].rename({'lat':'Latitude','lon':'Longitude','depth':'Depth'})
+    lref = idp[['ltfe_d_conc_bottle','lat','lon','depth']].rename({'lat':'Latitude','lon':'Longitude','depth':'Depth'})
+
+#    idp['fefree_d_conc_bottle']  = complexation(idp['fe_d_conc_bottle'], idp['ltfe_d_conc_bottle'], idp['ltfe_d_logk_bottle'])
+#    idp['cufree_d_conc_bottle']  = complexation(idp['cu_d_conc_bottle'], idp['l1cu_d_conc_bottle'], idp['l1cu_d_logk_bottle'])
+        
+    return fref, lref
 
 def calc_cost(modin,ref,stdev,iters=1,sumdims=['XC','YC','ZC']):  
     if issubclass(type(modin), xr.core.dataarray.DataArray) or issubclass(type(ref), xr.core.dataarray.DataArray):
