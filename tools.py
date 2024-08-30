@@ -686,12 +686,12 @@ def read_dicpco2_pickups(atm_box,data_parms,path):
     
     return atm_box
                     
-def get_macro_reference(fname,Rnp=16):
+def get_macro_reference(fname,Rnp=16,chunks={}):
     from geopy.distance import geodesic as ge
 
 # set macronutrient reference for the cost function from WOA13 annual climatology            
         
-    woa=xr.open_dataset(fname,decode_times=False).squeeze('time').drop('time').rename({'lat':'YC','lon':'XC','depth':'ZC'}).transpose('XC','YC','ZC','nbounds') 
+    woa=xr.open_dataset(fname,decode_times=False,chunks=chunks).squeeze('time').drop('time').rename({'lat':'YC','lon':'XC','depth':'ZC'}).transpose('XC','YC','ZC','nbounds') 
     woa=woa.assign_coords(XC=(woa.XC % 360)).roll(XC=(woa.dims['XC' ]//2),roll_coords=True).assign_coords(ZC=-woa.ZC)
     
     # Get axes - these are cell centres
@@ -756,7 +756,7 @@ def complexation(metal_tot, ligand_tot, beta):
     
         return term_1 + term_2
 
-def read_geotraces_idp(fname,varsin=None):
+def read_geotraces_idp(fname,varsin=None,chunks={}):
     from contextlib import suppress
     
     # QC string on the variable name changed between IDP2017 and IDP2021
@@ -788,7 +788,7 @@ def read_geotraces_idp(fname,varsin=None):
         qcgood=50
         
     # Read the netcdf file into xarray dataset
-    tmp=xr.open_dataset(fname)
+    tmp=xr.open_dataset(fname,chunks=chunks)
 
     if varsin is None:
         # We want to process the whole idp, which may take a few mins
@@ -862,7 +862,7 @@ def read_geotraces_idp(fname,varsin=None):
     idp['arctic_mask'  ] = xr.DataArray(data=arctic_mask  , dims=["N_STATIONS", "N_SAMPLES"])
     return idp
 
-def get_micro_reference(fname):
+def get_micro_reference(fname,chunks={}):
 # set Fe and L reference for the cost function from  GEOTRACES IDP 2017 or 2021 
     try:
         df=pd.read_csv(fname.replace(".nc","_variables.txt"), delimiter='\t')
@@ -886,7 +886,7 @@ def get_micro_reference(fname):
         varlist=None
     
     # Given the file list (or no file list), load the IDP dataset
-    idp=read_geotraces_idp(fname,varlist)
+    idp=read_geotraces_idp(fname,varlist,chunks=chunks)
     
     #idp['depth']=-0.001*idp['depth'] # convert +ve metres to -ve km
         
