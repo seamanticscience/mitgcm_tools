@@ -343,8 +343,10 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
             # Should be able to import these from grid_data
             if not grd:
                 # Be cheeky and reload the grid, which should have the axes needed
-                grd=xr.open_dataset(gb.glob("grid*nc")[0]).squeeze('T')
+                grd=xr.open_dataset(gb.glob("grid*nc")[0])
                 grd.close()
+                if "T" in grd.dims:
+                    grd=grd.squeeze('T')
                 grd=grd.drop(['XC','YC','XG','YG'])
                 grd=conform_axes(grd)
             if dsin.dims[ax] > 1:    
