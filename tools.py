@@ -528,7 +528,7 @@ def get_dicpco2(data_parms,data_dic,grid,path='./'):
         # if "grid" contains the time axes from your datafiles already, great!
         # should come with "T" as a bonus coordinate!
         atm_box=grid.iter.to_dataset()
-    except (KeyError, AttributeError):
+    except (KeyError, AttributeError, ValueError):
         # Time/iter axes not included in the "grid" dataarray, try and work it out...
         try:
             run_iters= np.linspace(data_parms['niter0'],
