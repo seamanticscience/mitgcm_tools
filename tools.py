@@ -498,9 +498,9 @@ def getparm(path_to_namelist,usef90nml=True,flatten=True):
                                     value=value.strip(' \"\n')+line.strip(' \t')
                     try: 
                         if key.strip().lower() in myparms.keys(): # append value to a key in myvars 
-                            myparms[key.strip().lower()].append(np.float(value.strip(' ,.\'\"\n')))
+                            myparms[key.strip().lower()].append(float(value.strip(' ,.\'\"\n')))
                         else: # Cannot append to a key that doesnt exist so create it as an array  
-                            myparms[key.strip().lower()]=[np.float(value.strip(' ,.\'\"\n'))]
+                            myparms[key.strip().lower()]=[float(value.strip(' ,.\'\"\n'))]
                     except ValueError:
                         if key.strip().lower() == 'fields':
                             if key.strip().lower() in myparms.keys(): # append value to a key in myvars 
