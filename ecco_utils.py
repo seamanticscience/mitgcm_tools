@@ -420,3 +420,70 @@ def get_eccodarwin_initial_conditions(metadata,data_ptracers,tracer_ids=[1,2,3,4
             default_dtype = np.float32
         )
     return ecco_initial_conditions
+
+def ecco_zonal_average(fld, lat_bins, grid, basin_name=None, basin_path='/home/jml1/.conda/envs/mitgcm/binary_data/'):
+    """
+    Compute weighted average of a quantity at each depth level
+    across latitude(s), defined in lat_vals, in an LLC grid. 
+
+    Uses xarray groupby_bins and weights calculated by surface area
+
+    Parameters
+    ----------
+    fld : xarray DataArray
+        3D spatial (+ time, optional) field
+    lat_vals : float or list
+        latitude value(s) specifying where to compute average
+    coords : xarray Dataset
+        only needs YC, and optional masks (defining wet points)
+    basin_name : string, optional
+        denote ocean basin over which to compute streamfunction
+        If not specified, compute global quantity
+        see get_basin.get_available_basin_names for options
+
+    Returns
+    -------
+    ds_out : xarray Dataset
+        with the main variable
+            'average'
+                average quantity across denoted latitude band at
+                each depth level with dimensions 'time' (if in given dataset),
+                'k' (depth), and 'lat'
+    """
+    # Get basin mask
+    maskC = grid.maskC.load() if 'maskC' in grid.coords else xr.ones_like(fld).compute()
+
+    if basin_name is not None:
+        maskC = ecco.get_basin_mask(
+            basin_name,
+            maskC.rename({'face':'tile'}),
+            basin_path=basin_path,
+            less_output=True,
+        ).rename({'tile':'face'})
+
+    area = grid.rA.load()
+
+    # These sums are the same for all lats, therefore precompute to save time
+    tmp_c = fld.where(maskC).load()
+
+    # Coordinate labels for the binned values
+    xbins = np.arange(0,len(lat_bins))
+    dbins = np.mean(np.diff(lat_bins))
+    nbins = np.arange(dbins/2, len(lat_bins)-1)
+
+    lat_labs = np.interp(nbins, xbins, lat_bins)
+
+    da_mean = (
+            (tmp_c*area).where(maskC)
+        ).groupby_bins(
+            "YC",
+            lat_bins,
+            labels=lat_labs,
+        ).sum()/(
+            (area).where(maskC)
+        ).groupby_bins(
+            "YC",
+            lat_bins,
+            labels=lat_labs,
+        ).sum()
+    return da_mean.assign_coords(z=('k',ecco_grid.Z.data)).swap_dims({'k':'z'}).rename({"YC_bins":"Latitude","z":"Depth"})
