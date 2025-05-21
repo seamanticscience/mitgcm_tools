@@ -486,4 +486,4 @@ def ecco_zonal_average(fld, lat_bins, grid, basin_name=None, basin_path='/home/j
             lat_bins,
             labels=lat_labs,
         ).sum()
-    return da_mean.assign_coords(z=('k',ecco_grid.Z.data)).swap_dims({'k':'z'}).rename({"YC_bins":"Latitude","z":"Depth"})
+    return da_mean.assign_coords(z=('k',grid.Z.data)).swap_dims({'k':'z'}).rename({"YC_bins":"Latitude","z":"Depth"})
