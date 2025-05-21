@@ -1,3 +1,14 @@
+import dask
+import glob
+import os
+import struct
+
+import ecco_v4_py as ecco
+import h5py       as hf
+import numpy      as np
+import pandas     as pd
+import xarray     as xr
+
 from xarray.backends        import BackendEntrypoint
 from xarray.backends.common import BackendArray
 from xarray.core.indexing   import (
@@ -13,7 +24,6 @@ def is_petsc_file(filename_or_obj):
     This is based on the assumption that the file starts with an 8-byte header
     consisting of two 4-byte integers.
     """
-    import struct
     classids = {
         1211216: 'Mat',
         1211214: 'Vec',
@@ -291,9 +301,6 @@ def read_config_mat(path, llc_grid=None):
     """
     Import TMM config files
     """
-    import ecco_v4_py as ecco
-    import h5py       as hf
-
     config = dict()
 
     # Add h5 reference
