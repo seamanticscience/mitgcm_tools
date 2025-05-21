@@ -366,7 +366,7 @@ def get_tmm_times(
     """
     Get times and iterations of petsc output files (_?? forcing, *ini, pickup*, *avg, and state output)
     """
-    if len(gb.glob(fileName + "_*")) > 1:
+    if len(glob.glob(fileName + "_*")) > 1:
         # this is monthly forcing (#isforcing)
         # Time axis is 12 montly usually
         at = ai = np.arange(12)
@@ -679,7 +679,7 @@ def read_tmm_output(
         # We can supply vector_length because we know that already
         try:
             Tr_io = xr.open_mfdataset(
-                sorted(gb.glob(fileName+'_*')),
+                sorted(glob.glob(fileName+'_*')),
                 num_time_entries = 1,
                 engine           = TMMBackend,
                 combine          = "nested",
@@ -690,7 +690,7 @@ def read_tmm_output(
             # This error occurs for the binary forcing, like wind
             #  have to supply zero header length
             Tr_io = xr.open_mfdataset(
-                sorted(gb.glob(fileName+'_*')),
+                sorted(glob.glob(fileName+'_*')),
                 num_time_entries = 1,
                 header_length    = 0,
                 engine           = TMMBackend,
