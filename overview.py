@@ -92,20 +92,20 @@ if data_pkg['usediagnostics']: # This is not that great
 d2rad = 0.017453 
 
 try: 
-    ocediag=mitgcm_tools.open_ncfile("oceDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'})
+    ocediag=mitgcm_tools.open_ncfile("oceDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_data)
     uvel=ocediag.UVEL
     vvel=ocediag.VVEL   
     wvel=ocediag.WVEL
     ocediag.close()
 except (AttributeError, FileNotFoundError) as e: # i.e. file does not exist or diagnostic is absent
     print(e+' file does not exist or diagnostic is absent. Using alternative values.')
-    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1})
+    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1},grid=grid_data)
     uvel=tave.uVeltave
     vvel=tave.vVeltave
     wvel=tave.wVeltave
     tave.close()
     
-gmdiag=mitgcm_tools.open_ncfile("gmDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'})
+gmdiag=mitgcm_tools.open_ncfile("gmDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_data)
 
 try: 
     gmuvel=gmdiag.GM_U_EDD
@@ -173,20 +173,20 @@ abmoc=(mres.sel(ZC=slice(-1000,-5000)).min(['YG','ZC']))
 amoc =(mres.sel(YG=slice(0,90),ZC=slice(-50,-2000)).max(['YG','ZC']))
 
 #%% Calculate Mean properties
-ocediag=mitgcm_tools.open_ncfile("oceDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'})
+ocediag=mitgcm_tools.open_ncfile("oceDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_data)
 
 try: 
     theta=ocediag.THETA
     salt =ocediag.SALT
     ocediag.close()
 except AttributeError: # i.e. diagnostic does not exist
-    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1})
+    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1},grid=grid_data)
     theta=tave.Ttave
     salt =tave.Stave
     tave.close()
 
 # Should add EXF and other options to this 
-surfdiag=mitgcm_tools.open_ncfile("surfDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000001':'ZC','Zd000001':'ZL'})
+surfdiag=mitgcm_tools.open_ncfile("surfDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000001':'ZC','Zd000001':'ZL'},grid=grid_data)
 try: 
     theta_surf_flux =surfdiag.TFLUX
     salt_surf_flux  =surfdiag.SFLUX*31104000*1e6
@@ -201,7 +201,7 @@ try:
     
     surfdiag.close()
 except AttributeError: # i.e. diagnostic does not exist
-    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1})
+    tave=mitgcm_tools.open_ncfile("tave.*.glob.nc",chunking={'T': 1},grid=grid_data)
     theta_surf_flux=tave.tFluxtave
     salt_surf_flux =tave.sFluxtave
     
@@ -217,13 +217,13 @@ except AttributeError: # i.e. diagnostic does not exist
     tave.close()
 
 #%%         
-ptr_tave=mitgcm_tools.open_ncfile("ptr_tave.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'})
+ptr_tave=mitgcm_tools.open_ncfile("ptr_tave.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_data)
 
-dicdiag=mitgcm_tools.open_ncfile("dicDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'})
+dicdiag=mitgcm_tools.open_ncfile("dicDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000015':'ZC','Zld000015':'ZL'},grid=grid_data)
 
-dic_surfdiag=mitgcm_tools.open_ncfile("dic_surfDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000001':'ZC','Zd000001':'ZL'})
+dic_surfdiag=mitgcm_tools.open_ncfile("dic_surfDiag.*.glob.nc",chunking={'T': 1},strange_axes={'Zmd000001':'ZC','Zd000001':'ZL'},grid=grid_data)
 
-dic_tave=mitgcm_tools.open_ncfile("dic_tave.*.glob.nc",chunking={'T': 1})
+dic_tave=mitgcm_tools.open_ncfile("dic_tave.*.glob.nc",chunking={'T': 1},grid=grid_data)
 
 #%% Process the Atmoshperic CO2 values and write out as a text file
 if data_gchem['usedic']:

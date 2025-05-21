@@ -343,8 +343,10 @@ def conform_axes(dsin,strange_ax=dict(),grd=[]):
             # Should be able to import these from grid_data
             if not grd:
                 # Be cheeky and reload the grid, which should have the axes needed
-                grd=xr.open_dataset(gb.glob("grid*nc")[0]).squeeze('T')
+                grd=xr.open_dataset(gb.glob("grid*nc")[0])
                 grd.close()
+                if "T" in grd.dims:
+                    grd=grd.squeeze('T')
                 grd=grd.drop(['XC','YC','XG','YG'])
                 grd=conform_axes(grd)
             if dsin.dims[ax] > 1:    
@@ -496,9 +498,9 @@ def getparm(path_to_namelist,usef90nml=True,flatten=True):
                                     value=value.strip(' \"\n')+line.strip(' \t')
                     try: 
                         if key.strip().lower() in myparms.keys(): # append value to a key in myvars 
-                            myparms[key.strip().lower()].append(np.float(value.strip(' ,.\'\"\n')))
+                            myparms[key.strip().lower()].append(float(value.strip(' ,.\'\"\n')))
                         else: # Cannot append to a key that doesnt exist so create it as an array  
-                            myparms[key.strip().lower()]=[np.float(value.strip(' ,.\'\"\n'))]
+                            myparms[key.strip().lower()]=[float(value.strip(' ,.\'\"\n'))]
                     except ValueError:
                         if key.strip().lower() == 'fields':
                             if key.strip().lower() in myparms.keys(): # append value to a key in myvars 
@@ -526,7 +528,7 @@ def get_dicpco2(data_parms,data_dic,grid,path='./'):
         # if "grid" contains the time axes from your datafiles already, great!
         # should come with "T" as a bonus coordinate!
         atm_box=grid.iter.to_dataset()
-    except (KeyError, AttributeError):
+    except (KeyError, AttributeError, ValueError):
         # Time/iter axes not included in the "grid" dataarray, try and work it out...
         try:
             run_iters= np.linspace(data_parms['niter0'],
