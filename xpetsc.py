@@ -771,7 +771,7 @@ def read_tmm_output(
         coordDict["box"] = ("box", np.arange(
                 np.sum(
                     np.where(
-                        boxes["izBox"] == 1, 1, 0
+                        tmmBoxesDict["izBox"] == 1, 1, 0
                     )),
                     dtype="int",
         ).astype("float"))
