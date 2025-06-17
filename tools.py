@@ -696,24 +696,51 @@ def get_macro_reference(fname,Rnp=16,chunks={}):
     woa=xr.open_dataset(fname,decode_times=False,chunks=chunks).squeeze('time').drop('time').rename({'lat':'YC','lon':'XC','depth':'ZC'}).transpose('XC','YC','ZC','nbounds') 
     woa=woa.assign_coords(XC=(woa.XC % 360)).roll(XC=(woa.dims['XC' ]//2),roll_coords=True).assign_coords(ZC=-woa.ZC)
     
-    # Get axes - these are cell centres
-    woa_lonc,woa_latc=np.meshgrid(woa.XC.values,woa.YC.values)
-    #woa_dep=woa.ZC.values
+    # Slow and not very efficient code
+    ## Get axes - these are cell centres
+    #woa_lonc,woa_latc=np.meshgrid(woa.XC.values,woa.YC.values)
+    ##woa_dep=woa.ZC.values
+    #
+    ##woa_latg=np.unique(woa.lat_bnds)
+    ##woa_long=np.unique(woa.lon_bnds % 360)
+    #
+    ## Use geopy's geodesic to calulate dx and dy...note it's lat then lon input
+    #woa_dy=np.zeros((woa.dims['XC'],woa.dims['YC']))
+    #for jj in range(woa.dims['YC']):
+    #    woa_dy[:,jj]=ge((woa.lat_bnds[jj][0],woa.XC.mean()),(woa.lat_bnds[jj][1],woa.XC.mean())).m
+    #woa['dy']=xr.DataArray(woa_dy,coords=[woa.XC, woa.YC], dims=['XC', 'YC'])
+    # 
+    #woa_dx=np.zeros((woa.dims['XC'],woa.dims['YC']))
+    #for jj in range(woa.dims['YC']):
+    #    woa_dx[:,jj]=ge((woa_latc[jj,0],woa.lon_bnds[0][0]),(woa_latc[jj,0],woa.lon_bnds[0][1])).m
+    #woa['dx']=xr.DataArray(woa_dx,coords=[woa.XC,woa.YC], dims=['XC','YC'])
+    #
+    # Function to calculate distance between two points
+    def calculate_distance(lat1, lon1, lat2, lon2):
+        lonmean=np.mean([lon1, lon2])
+        latmean=np.mean([lat1, lat2])
+        
+        # calculate distance in meters
+        dy =  ge((lat1, lonmean), (lat2, lonmean)).meters
+        dx =  ge((latmean, lon1), (latmean, lon2)).meters
+        return dy, dx 
+
+    # Use apply_ufunc to calculate distances between adjacent lat/lon points
+    distance_dy, distance_dx = xr.apply_ufunc(
+        calculate_distance,
+        woa['YC']-0.5, # move on to cell edges by subtracting dy/2
+        woa['XC']-0.5, # move on to cell edges by subtracting dx/2
+        (woa['YC']-0.5).shift(YC=-1).fillna(90), # not periodic in Y
+        (woa['XC']-0.5).roll(XC=-1), # periodic in X
+        input_core_dims=[[], [], [], []],
+        output_core_dims=[[],[]],
+        vectorize=True,
+        dask="parallelized", # Optional: use Dask for parallel processing
+    )
     
-    #woa_latg=np.unique(woa.lat_bnds)
-    #woa_long=np.unique(woa.lon_bnds % 360)
-    
-    # Use geopy's geodesic to calulate dx and dy...note it's lat then lon input
-    woa_dy=np.zeros((woa.dims['XC'],woa.dims['YC']))
-    for jj in range(woa.dims['YC']):
-        woa_dy[:,jj]=ge((woa.lat_bnds[jj][0],woa.XC.mean()),(woa.lat_bnds[jj][1],woa.XC.mean())).m
-    woa['dy']=xr.DataArray(woa_dy,coords=[woa.XC, woa.YC], dims=['XC', 'YC'])
-    
-    woa_dx=np.zeros((woa.dims['XC'],woa.dims['YC']))
-    for jj in range(woa.dims['YC']):
-        woa_dx[:,jj]=ge((woa_latc[jj,0],woa.lon_bnds[0][0]),(woa_latc[jj,0],woa.lon_bnds[0][1])).m
-    woa['dx']=xr.DataArray(woa_dx,coords=[woa.XC,woa.YC], dims=['XC','YC'])
-    
+    woa['dx']=distance_dx
+    woa['dy']=distance_dy
+
     # Calulate dz (in metres)
     woa['dz']=xr.DataArray(np.diff(np.unique(woa.depth_bnds)),coords=[woa.ZC], dims=['ZC'])
     
