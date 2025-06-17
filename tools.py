@@ -931,15 +931,17 @@ def get_micro_reference(fname,chunks={}):
         
     return fref, lref
 
-def calc_cost(modin,ref,stdev,iters=1,sumdims=['XC','YC','ZC']):  
+def calc_cost(modin,ref,stdev,weights=None,iters=1,sumdims=['XC','YC','ZC']):  
     if issubclass(type(modin), xr.core.dataarray.DataArray) or issubclass(type(ref), xr.core.dataarray.DataArray):
     # use the xarray-based methods  
 #        sumdims=[]      
 #        for ax in modin.dims:
 #            if ax.lower().find('t')==-1:
 #                sumdims.append(ax)
-            
-        cost=(np.power(modin-ref,2)/np.power(stdev,2)).sum(sumdims)
+        if weights is not None:
+            cost=(np.power(modin-ref,2)/np.power(stdev,2)).weighted(weights).sum(sumdims)
+        else:
+            cost=(np.power(modin-ref,2)/np.power(stdev,2)).sum(sumdims)
     else: # Use the old way using masked arrays or ndarrays
         if np.ndim(modin)<=1:
             iters=1
