@@ -703,7 +703,7 @@ def read_tmm_output(
         #   set header_length to zero and supply num_time_entries to
         #   calculate vector_length
         Tr_io = xr.open_dataarray(
-            os.path.join(data_dir,fileName),
+            os.path.join(fileName),
             num_time_entries = nt,
             header_length    = 0,
             engine           = TMMBackend,
