@@ -703,7 +703,7 @@ def read_tmm_output(
         #   set header_length to zero and supply num_time_entries to
         #   calculate vector_length
         Tr_io = xr.open_dataarray(
-            os.path.join(data_dir,fileName),
+            fileName,
             num_time_entries = nt,
             header_length    = 0,
             engine           = TMMBackend,
@@ -750,7 +750,7 @@ def read_tmm_output(
         # reduce modelIndices to surface only using the 2d field "Depth"
         for dim in modelGrid[maskName].isel({kname:0}).dims:
             modelIndices[dim] = np.where(
-                modelIndices[kname] == np.min(
+                modelIndices[kname] == np.nanmin(
                     modelIndices[kname],
                 ),
                 modelIndices[dim],
@@ -869,7 +869,7 @@ def write_tmm_input(
         # reduce modelIndices to surface only using the 2d field "Depth"
         for dim in modelGrid[maskName].isel({kname:0}).dims:
             modelIndices[dim] = np.where(
-                modelIndices[kname] == np.min(
+                modelIndices[kname] == np.nanmin(
                     modelIndices[kname],
                 ),
                 modelIndices[dim],
@@ -879,7 +879,7 @@ def write_tmm_input(
                 ~np.isnan(modelIndices[dim])
             ]
         Ir_post = np.where(
-            modelIndices[kname] == np.min(
+            modelIndices[kname] == np.nanmin(
                 modelIndices[kname],
             ),
             Ir_post,
@@ -889,7 +889,7 @@ def write_tmm_input(
                 ~np.isnan(Ir_post)
             ].astype("int")
         Ir_out = np.where(
-            modelIndices[kname] == np.min(
+            modelIndices[kname] == np.nanmin(
                 modelIndices[kname],
             ),
             np.ravel(
