@@ -998,26 +998,42 @@ def write_tmm_input(
 
 def read_pco2(fileName, prec=">f8"):
     # Read atmospheric CO2 output from the TMM
-    pco2_ini = np.fromfile(
-        fileName.replace("output", "ini").replace("avg", "ini"), dtype=prec
-    )
     pco2_out = np.fromfile(fileName, dtype=prec)
-
-    pco2 = np.insert(pco2_out, 0, pco2_ini, axis=0)
 
     # Do some sleuthing for the time axis
     indir = "/".join(fileName.split("/")[:-1])
     try:
         times = np.genfromtxt(os.path.join(indir, "atm_output_time.txt"))
-
-        # infer start time from dt
-        dt = np.mean(np.diff(times[:, 1]))
-        di = np.mean(np.diff(times[:, 0]))
-        at = np.insert(times[:, 1], 0, times[0, 1] - dt, axis=0)
-        ai = np.insert(times[:, 0], 0, times[0, 0] - di, axis=0)
-    except (UnicodeDecodeError, OSError, IndexError):
-        at = np.arange(len(pco2))
-        ai = at
+        at = times[:, 1]
+        ai = times[:, 0]
+    except (UnicodeDecodeError, OSError, IndexError, FileNotFoundError):
+        try:
+            times = np.genfromtxt(os.path.join(indir, "output_time.txt"))
+            at = times[:, 1]
+            ai = times[:, 0]
+        except (UnicodeDecodeError, OSError, IndexError, FileNotFoundError):
+            at = np.arange(len(pco2_out))
+            ai = at   
+        
+    if len(pco2_out) != len(at):
+        # try to locate initial pCO2
+        try:
+            pco2_ini = np.fromfile(
+                fileName.replace("avg", "ini").replace("output", "ini"), dtype=prec,
+            )
+            pco2 = np.insert(pco2_out, 0, pco2_ini, axis=0)
+        except (OSError, FileNotFoundError):
+            try:
+                pco2_ini = np.fromfile(
+                    sorted(gb.glob(os.path.join(indir, "pickup_pCO2atm*bin")))[1], dtype=prec,
+                )
+                pco2 = np.insert(pco2_out, 0, pco2_ini, axis=0)
+            except (UnicodeDecodeError, OSError, IndexError):
+                # if you really cant find initial, then reduce length of at and ai
+                at = at[:-1]
+                ai = at[:-1]
+    else:
+        pco2 = pco2_out
 
     # output as pandas dataframe
     df = pd.DataFrame(data={"Time": at, "Iter": ai, "atm_pCO2": pco2})
