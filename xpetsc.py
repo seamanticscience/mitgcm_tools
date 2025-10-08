@@ -9,6 +9,7 @@ import numpy      as np
 import pandas     as pd
 import xarray     as xr
 
+from numbers                import Integral
 from xarray.backends        import BackendEntrypoint
 from xarray.backends.common import BackendArray
 from xarray.core.indexing   import (
@@ -69,6 +70,10 @@ class TMMBackendArray(BackendArray):
         )
         self.header_dtype  = header_dtype
         self.dtype         = dtype
+        # on-disk dtype (may be big-endian) and native-endian output dtype
+        self.file_dtype = np.dtype(dtype)
+        self.out_dtype = self.file_dtype.newbyteorder('=')
+        self.dtype = self.out_dtype # xarray inspects this
         self.vector_length = shape[1]  # Length of each data vector
         self.lock          = lock
 
@@ -80,53 +85,81 @@ class TMMBackendArray(BackendArray):
             self._raw_indexing_method,
         )
 
+
     def _raw_indexing_method(self, key: tuple):
-        time_indices  = key[0]
-        value_indices = key[1] if len(key) > 1 else slice(None)
+        t_idx = key[0]
+        v_idx = key[1] if len(key) > 1 else slice(None)
 
-        if isinstance(time_indices, int):
-            time_indices = [time_indices]
-        elif isinstance(time_indices, slice):
-            time_indices = range(
-                *time_indices.indices(self.shape[0])
-            )
+        t_is_int = isinstance(t_idx, Integral)
+        if t_is_int:
+            t_list = [t_idx]
+        elif isinstance(t_idx, slice):
+            t_list = list(range(*t_idx.indices(self.shape[0])))
+        else:
+            t_list = list(t_idx)
 
-        # Determine the number of values to read for value_indices
-        value_indices_range = np.arange(self.vector_length)[value_indices]
-        num_values          = len(value_indices_range)
+        v_is_int = isinstance(v_idx, Integral)
+        if v_is_int:
+            out = np.empty((len(t_list),), dtype=self.out_dtype)
+        else:
+            if isinstance(v_idx, slice):
+                start, stop, step = v_idx.indices(self.vector_length)
+                nvals = max(0, (stop - start + (step - 1)) // step)
+            else:
+                v_idx = np.asarray(v_idx)
+                nvals = v_idx.size
+            out = np.empty((len(t_list), nvals), dtype=self.out_dtype)
 
-        # Create an empty array to store the results
-        result = np.empty(
-            (len(time_indices), num_values),
-            dtype = self.dtype,
-        )
+        for i, t in enumerate(t_list):
+            arr = self._read_time_entry_slice(t, v_idx)
+            if isinstance(arr, np.ndarray) and arr.dtype.byteorder not in ('=', '|'):
+                arr = arr.byteswap().view(arr.dtype.newbyteorder('='))
+            out[i] = arr
 
-        for i, time_index in enumerate(time_indices):
-            # Read only the values specified by value_indices for each time entry
-            result[i, :] = self._read_time_entry(
-                time_index, value_indices,
-            )
+        if t_is_int and v_is_int:
+            return out[0]
+        if t_is_int and not v_is_int:
+            return out[0, :]
+        if v_is_int:
+            return out
+        return out
 
-        return result
 
-    def _read_time_entry(self, time_index, value_indices):
-        with self.lock, open(self.filename, "rb") as f:
-            # Calculate the offset to the desired time entry
-            offset = time_index * (
-                  self.header_length * self.header_dtype.itemsize
-                + self.vector_length * self.dtype.itemsize
-            )
-            f.seek(
-                offset + self.header_length * self.header_dtype.itemsize, 0,
-            )  # Skip the header if present
+    def _read_time_entry_slice(self, time_index, value_indices):
+        with open(self.filename, 'rb') as f:
+            # compute using Python ints to avoid NumPy int overflows
+            header_bytes = int(self.header_length) * int(self.header_dtype.itemsize)
+            row_bytes = int(self.vector_length) * int(self.file_dtype.itemsize)
+            stride_bytes = header_bytes + row_bytes
+            base = int(time_index) * stride_bytes + header_bytes
 
-            # Read the requested values for this time entry
-            data = np.fromfile(
-                f,
-                dtype = self.dtype,
-                count = self.vector_length,
-            )
-        return data[value_indices]
+            # sanity bounds check
+            file_size = os.path.getsize(self.filename)
+            if base < 0 or base > file_size:
+                raise IndexError(f"Computed base offset out of bounds: {base} (file size {file_size})")
+
+            if isinstance(value_indices, slice):
+                start, stop, step = value_indices.indices(self.vector_length)
+                if step == 1:
+                    f.seek(base + start * self.file_dtype.itemsize, 0)
+                    count = max(0, stop - start)
+                    arr = np.fromfile(f, dtype=self.file_dtype, count=count)
+                else:
+                    f.seek(base, 0)
+                    row = np.fromfile(f, dtype=self.file_dtype, count=self.vector_length)
+                    arr = row[value_indices]
+            elif isinstance(value_indices, Integral):
+                f.seek(base + value_indices * self.file_dtype.itemsize, 0)
+                arr = np.fromfile(f, dtype=self.file_dtype, count=1)
+                arr = arr.reshape(())
+            else:
+                f.seek(base, 0)
+                row = np.fromfile(f, dtype=self.file_dtype, count=self.vector_length)
+                arr = row[value_indices]
+
+            if isinstance(arr, np.ndarray) and arr.dtype.byteorder not in ('=', '|'):
+                arr = arr.byteswap().view(arr.dtype.newbyteorder('='))
+            return arr
 
 
 class TMMBackend(BackendEntrypoint):
@@ -134,8 +167,12 @@ class TMMBackend(BackendEntrypoint):
         self,
         filename_or_obj,
         *,
-        drop_variables   = None,
+        start_time       = 0, 
+        time_step        = 1, 
+        times            = None,
         num_time_entries = None,
+        time_map_file    = None,
+        drop_variables   = None,
         vector_length    = None,
         header_length    = 2,
         dtype            = np.dtype(">f8"),
@@ -218,12 +255,36 @@ class TMMBackend(BackendEntrypoint):
                 lock          = dask.utils.SerializableLock()
             )
         )
+        
+        # Time coordinate logic
+        if time_map_file is not None:
+            mapping = np.loadtxt(time_map_file)
+            if mapping.shape[1] < 2:
+                raise ValueError(f"{time_map_file} must have at least two columns: iteration and time.")
+            iterations, time_values = mapping[:, 0], mapping[:, 1]
+            if len(iterations) != num_time_entries:
+                print("Warning: iteration count does not match num_time_entries — times will be truncated or interpolated.")
+            time_coord = time_values[:num_time_entries]
+        elif times is not None:
+            if len(times) != num_time_entries:
+                raise ValueError(
+                    f"Length of provided times ({len(times)}) does not match "
+                    f"num_time_entries ({num_time_entries})."
+                )
+            time_coord = np.array(times)
+        else:
+            time_coord = np.arange(
+                start_time,
+                start_time + num_time_entries * time_step,
+                time_step,
+            )
 
         # Create xarray Dataset
         coords = {
-            "time": np.arange(num_time_entries),
+            "time": time_coord,
             "box" : np.arange(vector_length)
         }
+        
         return xr.Dataset(
             {"tmm_data": (["time", "box"], data)},
             coords = coords,
@@ -715,6 +776,7 @@ def read_tmm_output(
         Tr_io = xr.open_dataarray(
             fileName,
             engine           = TMMBackend,
+            times            = at,
             num_time_entries = nt,
             chunks           = chunks,
         )
