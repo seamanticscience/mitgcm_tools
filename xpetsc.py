@@ -202,6 +202,7 @@ class TMMBackend(BackendEntrypoint):
                             dtype = header_dtype, 
                             count = 2)
                         _, vector_length = data
+                        vector_length = int(vector_length)
                 else:
                     # Calculate vector_length if header_size is zero and num_time_entries is provided
                     vector_length = int(
@@ -214,28 +215,31 @@ class TMMBackend(BackendEntrypoint):
                             "Calculated vector_length is invalid. Please check the input parameters and file structure."
                         )
 
-            vector_size_bytes = float(vector_length) * dtype.itemsize
-
+            #vector_size_bytes = float(vector_length) * dtype.itemsize
+            vector_size_bytes = int(vector_length) * int(dtype.itemsize)
+            
             if num_time_entries is None:
                 # Calculate num_time_entries by iterating until the remainder is zero
                 num_time_entries = 1
                 while (
                     np.remainder(
-                        num_time_entries * (
-                            header_size_bytes + vector_size_bytes
+                        int(num_time_entries) * (
+                        int(header_size_bytes) + int(vector_size_bytes)
                         ),
-                        file_size,
+                        int(file_size),
                     )
                     > 0
                 ):
                     num_time_entries += 1
+                num_time_entries = int(num_time_entries)                
                 if num_time_entries <= 0:
                     raise ValueError(
                         "Calculated num_time_entries is invalid. Please check the input parameters and file structure."
                     )
 
         # Validate file size consistency
-        vector_size_bytes = float(vector_length) * dtype.itemsize
+        #vector_size_bytes = float(vector_length) * dtype.itemsize
+        vector_size_bytes = int(vector_length) * int(dtype.itemsize)
         expected_file_size = num_time_entries * (
             header_size_bytes + vector_size_bytes
         )
